@@ -60,6 +60,8 @@ var effortCapabilities = map[string]effortCapability{
 	"gpt-5.6-sol":   {reasoning: true, levels: reasoningEffortLevels},
 	"gpt-5.6-terra": {reasoning: true, levels: reasoningEffortLevels},
 	"gpt-5.6-luna":  {reasoning: true, levels: reasoningEffortLevels},
+	// Auto: backend selects the model, bypasses all effort/thinking.
+	"auto": {levels: nil},
 }
 
 // IsReasoningModel reports whether the resolved Kiro model belongs to a
@@ -95,6 +97,12 @@ func ResolveEffort(kiroModel, requested string) string {
 			return ""
 		}
 		capability = effortCapability{levels: enum}
+	}
+	// A capability that reports no effort levels does not support effort at
+	// all. The `auto` SKU is one such model: the backend selects the model and
+	// its capabilities, so any effort request is dropped, never guessed.
+	if len(capability.levels) == 0 {
+		return ""
 	}
 	// Enum membership wins: accepts model-specific values like "none" that
 	// are not rankable levels.

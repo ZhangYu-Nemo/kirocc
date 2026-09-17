@@ -511,6 +511,9 @@ func TestListModels_DisplayNames(t *testing.T) {
 		{id: "claude-gpt-5.6-sol", want: "GPT 5.6 Sol"},
 		{id: "claude-gpt-5.6-terra", want: "GPT 5.6 Terra"},
 		{id: "claude-gpt-5.6-luna", want: "GPT 5.6 Luna"},
+		// Auto model: advertised as claude-auto with display name "Auto".
+		{id: "claude-auto", want: "Auto"},
+		{id: "auto"},
 		// Canonical SKUs are advertised unlabelled.
 		{id: "gpt-5.6-sol"},
 		{id: "claude-opus-5"},
@@ -637,16 +640,36 @@ func TestIsReasoningModel_EnvAliasToGPT(t *testing.T) {
 }
 
 func TestResolve_EnvAliasToGPT_SuffixStillRejected(t *testing.T) {
-	// The tier-2 [1m]-strip exclusion is judged by the resolved Kiro model's
-	// intrinsic capability, so an env alias to a GPT model inherits it. Both
-	// the canonical ID and the alias must reject the suffix and fall through
-	// to the default fallback.
+	// The tier-2 [1m]-strip exclusion is judged by the resolved Kiro
+	// model's intrinsic capability, so an env alias to a GPT model
+	// inherits it. Both the canonical ID and the alias must reject the
+	// suffix and fall through to the default fallback.
 	t.Setenv("KIROCC_MODEL_MAPPINGS", `[{"anthropic":"my-gpt","kiro":"gpt-5.6-sol","context_window_size":272000}]`)
 
 	for _, model := range []string{"gpt-5.6-sol[1m]", "my-gpt[1m]"} {
 		kiroModel, _, _, _ := Resolve(model, false)
 		if kiroModel != DefaultModel {
 			t.Errorf("Resolve(%q) kiroModel = %q, want default fallback %q", model, kiroModel, DefaultModel)
+		}
+	}
+}
+
+func TestResolve_AutoModel(t *testing.T) {
+	// Auto bypasses thinking/effort resolution and passes `auto`
+	// through to the Kiro backend.
+	for _, model := range []string{"auto", "claude-auto"} {
+		kiroModel, thinking, window, anthropicModel := Resolve(model, false)
+		if kiroModel != "auto" {
+			t.Errorf("Resolve(%q) kiroModel = %q, want auto", model, kiroModel)
+		}
+		if thinking {
+			t.Errorf("Resolve(%q) thinking = %v, want false", model, thinking)
+		}
+		if window != 0 {
+			t.Errorf("Resolve(%q) window = %d, want 0", model, window)
+		}
+		if anthropicModel != model {
+			t.Errorf("Resolve(%q) anthropicModel = %q, want %q", model, anthropicModel, model)
 		}
 	}
 }

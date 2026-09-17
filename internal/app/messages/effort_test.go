@@ -61,6 +61,13 @@ func TestResolveEffort(t *testing.T) {
 		{name: "gpt disabled beats explicit effort", kiroModel: "gpt-5.6-luna", effort: "high", thinkingType: anthropic.ThinkingTypeDisabled, want: "none"},
 		// Claude models never receive none: disabled just means no thinking fallback.
 		{name: "claude disabled does not map to none", kiroModel: "claude-opus-4.8", thinkingType: anthropic.ThinkingTypeDisabled, want: ""},
+
+		// Auto: backend selects the model, so effort is always dropped — even
+		// when thinking is enabled (which would otherwise try a default effort).
+		{name: "auto explicit effort dropped", kiroModel: "auto", effort: "high", want: ""},
+		{name: "auto thinking only drops effort", kiroModel: "auto", thinking: true, want: ""},
+		{name: "auto no intent drops effort", kiroModel: "auto", want: ""},
+		{name: "auto claude-auto thinking drops effort", kiroModel: "claude-auto", thinking: true, want: ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

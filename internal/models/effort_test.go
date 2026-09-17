@@ -60,6 +60,13 @@ func TestResolveEffort(t *testing.T) {
 		// none must never leak into Claude models (would clamp to max).
 		{"opus-4.8 none dropped not clamped", "claude-opus-4.8", "none", ""},
 		{"sonnet-4.6 none dropped not clamped", "claude-sonnet-4.6", "none", ""},
+
+		// Auto: backend selects the model, so effort is always dropped.
+		{"auto max dropped", "auto", "max", ""},
+		{"auto high dropped", "auto", "high", ""},
+		{"auto medium dropped", "auto", "medium", ""},
+		{"auto none dropped", "auto", "none", ""},
+		{"auto empty", "auto", "", ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

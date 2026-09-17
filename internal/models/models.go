@@ -108,6 +108,9 @@ var modelMapOrdered = []Mapping{
 	{Anthropic: "claude-gpt-5.6-sol", Kiro: "gpt-5.6-sol", ContextWindowSize: 272_000, DisplayName: "GPT 5.6 Sol"},
 	{Anthropic: "claude-gpt-5.6-terra", Kiro: "gpt-5.6-terra", ContextWindowSize: 272_000, DisplayName: "GPT 5.6 Terra"},
 	{Anthropic: "claude-gpt-5.6-luna", Kiro: "gpt-5.6-luna", ContextWindowSize: 272_000, DisplayName: "GPT 5.6 Luna"},
+	// Auto model: passes `auto` through to the Kiro backend, bypasses
+	// thinking/effort resolution. Advertised as `claude-auto`.
+	{Anthropic: "claude-auto", Kiro: "auto", DisplayName: "Auto"},
 }
 
 const DefaultModel = "claude-sonnet-4.6"
@@ -202,6 +205,12 @@ func effectiveMappings() []Mapping {
 // Upstream `kiroModel` is never `[1m]`-suffixed — it always comes from
 // mapping tables. KIROCC_MODEL_MAPPINGS env var can override mappings.
 func Resolve(model string, context1M bool) (kiroModel string, thinking bool, contextWindowSize int, anthropicModel string) {
+	// Auto passes `auto` through to the Kiro backend and bypasses
+	// thinking/effort resolution.
+	if model == "auto" || model == "claude-auto" {
+		return "auto", false, 0, model
+	}
+
 	model = normalizeThinkingSuffix(model)
 
 	var matchedWindowSize int
