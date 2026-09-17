@@ -134,7 +134,7 @@ func serverToolResultIsError(b anthropic.ContentBlock) bool {
 // Kiro toolResult carries. Advisor advice is restored verbatim so the executor
 // can act on it; a redacted result cannot be decrypted by the proxy and is
 // reduced to a marker. An empty string is returned when nothing rendered —
-// ExtractToolResults and scanCurrentMessage own the "(empty result)" fallback.
+// scanMessageContent owns the "(empty result)" fallback.
 func ServerToolResultText(b anthropic.ContentBlock) string {
 	var parts []string
 	add := func(s string) {

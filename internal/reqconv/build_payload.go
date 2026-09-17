@@ -44,7 +44,7 @@ func BuildPayload(req *anthropic.Request, options BuildOptions) (*kiroproto.Payl
 	// Single-pass scan of the current message for tool_results and images.
 	// The tool_result IDs also identify which trailing assistant tool round is
 	// still in flight (for redacted reasoning replay in history).
-	toolResults, images := scanCurrentMessage(lastMsg.Content)
+	toolResults, images := scanMessageContent(lastMsg.Content)
 	currentToolResultIDs := make([]string, 0, len(toolResults))
 	for _, tr := range toolResults {
 		currentToolResultIDs = append(currentToolResultIDs, tr.ToolUseID)

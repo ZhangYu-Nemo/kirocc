@@ -9,18 +9,18 @@ import (
 	"github.com/d-kuro/kirocc/internal/kiroproto"
 )
 
-// scanCurrentMessage walks message content once and extracts tool_results and
-// images. Replaces the former pattern of calling ExtractToolResults and
-// ExtractImages separately, which scanned the block list twice.
+// scanMessageContent walks a user message's content once and extracts
+// tool_results and images. Used for both the current message and history
+// entries, which carry the same userInputMessage shape.
 //
 // Images nested inside tool_result blocks are promoted to the returned images
 // slice so they reach the model. Kiro's ToolResultContent only carries Text or
 // JSON (see kiroproto.ToolResultContent), so an image cannot be attached to the
-// tool result itself; UserInputMessage.Images is the only image channel for the
-// current turn. Without promotion, a tool that returns an image (for example
-// Read on a PNG) yields no text, so stdout becomes "(empty result)" and the
-// image is silently lost.
-func scanCurrentMessage(content anthropic.MessageContent) (toolResults []kiroproto.ToolResult, images []kiroproto.Image) {
+// tool result itself; the message's images list is the only image channel.
+// Without promotion, a tool that returns an image (for example Read on a PNG)
+// yields no text, so stdout becomes "(empty result)" and the image is silently
+// lost.
+func scanMessageContent(content anthropic.MessageContent) (toolResults []kiroproto.ToolResult, images []kiroproto.Image) {
 	if content.IsString() {
 		return nil, nil
 	}

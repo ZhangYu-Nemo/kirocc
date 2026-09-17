@@ -1,7 +1,6 @@
 package reqconv
 
 import (
-	"log/slog"
 	"slices"
 	"strings"
 
@@ -101,16 +100,20 @@ func buildHistory(msgs []anthropic.Message, nameMap *ToolNameMap, currentToolRes
 	for i, msg := range msgs {
 		switch msg.Role {
 		case "user":
+			toolResults, images := scanMessageContent(msg.Content)
 			content := ExtractTextContent(msg.Content)
+			// Kiro rejects a history entry that carries no content at all, so an
+			// image-only message (its text is empty once the image block is
+			// extracted) needs the same placeholder the normalizer uses for
+			// synthetic turns. Tool-result turns legitimately keep empty content.
+			if content == "" && len(toolResults) == 0 {
+				content = syntheticEmpty
+			}
 			userMsg := &kiroproto.HistoryUserInputMessage{
 				Content: content,
 				Origin:  kiroproto.OriginKiroCLI,
+				Images:  images,
 			}
-			// Warn if images are present in history — Kiro history type does not support images.
-			if images := ExtractImages(msg.Content); len(images) > 0 {
-				slog.Warn("images in history messages are not supported and will be dropped", "image_count", len(images))
-			}
-			toolResults := ExtractToolResults(msg.Content)
 			// Reorder tool results to match the preceding assistant's tool_use order.
 			if len(toolResults) > 1 && i > 0 && msgs[i-1].Role == "assistant" {
 				toolResults = ReorderToolResults(toolResults, extractToolUseIDs(msgs[i-1]))

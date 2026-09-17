@@ -159,12 +159,16 @@ func (he HistoryEntry) MarshalJSONTo(enc *jsontext.Encoder) error {
 	}{UserInputMessage: he.UserInputMessage})
 }
 
-// HistoryUserInputMessage is a user message within history.
+// HistoryUserInputMessage is a user message within history. It carries the same
+// fields as UserInputMessage, images included: history entries are the same
+// userInputMessage shape, so an image sent in an earlier turn stays visible to
+// the model on every following request.
 type HistoryUserInputMessage struct {
 	Content                 string                   `json:"content"`
 	ModelID                 string                   `json:"modelId,omitempty"`
 	Origin                  string                   `json:"origin,omitempty"`
 	UserInputMessageContext *UserInputMessageContext `json:"userInputMessageContext,omitempty"`
+	Images                  []Image                  `json:"images,omitempty"`
 	CachePoint              *CachePoint              `json:"cachePoint,omitempty"`
 }
 

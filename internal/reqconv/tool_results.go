@@ -5,42 +5,6 @@ import (
 	"github.com/d-kuro/kirocc/internal/kiroproto"
 )
 
-// ExtractToolResults extracts tool_result blocks from message content and converts to Kiro format.
-func ExtractToolResults(content anthropic.MessageContent) []kiroproto.ToolResult {
-	if content.IsString() {
-		return nil
-	}
-	var results []kiroproto.ToolResult
-	for _, b := range content.Blocks {
-		if !b.IsToolResult() {
-			continue
-		}
-		status := kiroproto.ToolResultStatusSuccess
-		if b.IsError {
-			status = kiroproto.ToolResultStatusError
-		}
-		text := extractToolResultContentText(b)
-		if text == "" {
-			text = "(empty result)"
-		}
-		// v3 captures show kiro-cli uses exit_status/stdout/stderr format.
-		exitStatus := "0"
-		if b.IsError {
-			exitStatus = "1"
-		}
-		results = append(results, kiroproto.ToolResult{
-			ToolUseID: b.ToolUseID,
-			Status:    status,
-			Content: []kiroproto.ToolResultContent{{JSON: map[string]any{
-				"exit_status": exitStatus,
-				"stdout":      text,
-				"stderr":      "",
-			}}},
-		})
-	}
-	return results
-}
-
 // ExtractToolUses extracts tool_use blocks from assistant message content and converts to Kiro format.
 func ExtractToolUses(content anthropic.MessageContent) []kiroproto.HistoryToolUse {
 	if content.IsString() {

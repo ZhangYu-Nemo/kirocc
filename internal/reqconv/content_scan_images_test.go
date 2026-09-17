@@ -11,7 +11,7 @@ import (
 // list. Kiro's ToolResultContent carries only Text or JSON, so without
 // promotion an image-only tool result (e.g. the Read tool on a PNG) collapses
 // to "(empty result)" and the image never reaches the model.
-func TestScanCurrentMessagePromotesToolResultImages(t *testing.T) {
+func TestScanMessageContentPromotesToolResultImages(t *testing.T) {
 	content := anthropic.MessageContent{
 		Blocks: []anthropic.ContentBlock{{
 			Type:      anthropic.BlockTypeToolResult,
@@ -29,7 +29,7 @@ func TestScanCurrentMessagePromotesToolResultImages(t *testing.T) {
 		}},
 	}
 
-	toolResults, images := scanCurrentMessage(content)
+	toolResults, images := scanMessageContent(content)
 
 	if len(toolResults) != 1 {
 		t.Fatalf("expected 1 tool result, got %d", len(toolResults))
@@ -54,7 +54,7 @@ func TestScanCurrentMessagePromotesToolResultImages(t *testing.T) {
 }
 
 // A tool_result mixing text and an image keeps its text and appends the notice.
-func TestScanCurrentMessageToolResultTextPlusImage(t *testing.T) {
+func TestScanMessageContentToolResultTextPlusImage(t *testing.T) {
 	content := anthropic.MessageContent{
 		Blocks: []anthropic.ContentBlock{{
 			Type:      anthropic.BlockTypeToolResult,
@@ -70,7 +70,7 @@ func TestScanCurrentMessageToolResultTextPlusImage(t *testing.T) {
 		}},
 	}
 
-	toolResults, images := scanCurrentMessage(content)
+	toolResults, images := scanMessageContent(content)
 
 	if len(images) != 1 || images[0].Format != "jpeg" {
 		t.Fatalf("expected one jpeg image, got %+v", images)
@@ -86,7 +86,7 @@ func TestScanCurrentMessageToolResultTextPlusImage(t *testing.T) {
 
 // Non-base64 image sources cannot be sent inline and must be skipped rather
 // than emitted with empty bytes.
-func TestScanCurrentMessageSkipsNonBase64ToolResultImage(t *testing.T) {
+func TestScanMessageContentSkipsNonBase64ToolResultImage(t *testing.T) {
 	content := anthropic.MessageContent{
 		Blocks: []anthropic.ContentBlock{{
 			Type:      anthropic.BlockTypeToolResult,
@@ -102,7 +102,7 @@ func TestScanCurrentMessageSkipsNonBase64ToolResultImage(t *testing.T) {
 		}},
 	}
 
-	toolResults, images := scanCurrentMessage(content)
+	toolResults, images := scanMessageContent(content)
 
 	if len(images) != 0 {
 		t.Errorf("expected no images for url source, got %d", len(images))
@@ -115,7 +115,7 @@ func TestScanCurrentMessageSkipsNonBase64ToolResultImage(t *testing.T) {
 
 // Regression guard: a top-level image block (the paste-into-chat path) must
 // keep working exactly as before.
-func TestScanCurrentMessageTopLevelImageUnchanged(t *testing.T) {
+func TestScanMessageContentTopLevelImageUnchanged(t *testing.T) {
 	content := anthropic.MessageContent{
 		Blocks: []anthropic.ContentBlock{{
 			Type: anthropic.BlockTypeImage,
@@ -125,7 +125,7 @@ func TestScanCurrentMessageTopLevelImageUnchanged(t *testing.T) {
 		}},
 	}
 
-	toolResults, images := scanCurrentMessage(content)
+	toolResults, images := scanMessageContent(content)
 
 	if len(toolResults) != 0 {
 		t.Errorf("expected no tool results, got %d", len(toolResults))

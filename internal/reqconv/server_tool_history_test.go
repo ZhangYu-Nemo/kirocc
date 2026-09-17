@@ -142,8 +142,8 @@ func TestServerToolResultText(t *testing.T) {
 			want: "advisor error: overloaded",
 		},
 		{
-			// The "(empty result)" placeholder belongs to ExtractToolResults /
-			// scanCurrentMessage, which apply it to every empty tool_result.
+			// The "(empty result)" placeholder belongs to scanMessageContent,
+			// which applies it to every empty tool_result.
 			name: "empty content renders empty",
 			block: anthropic.ContentBlock{
 				Type: anthropic.BlockTypeAdvisorToolResult, ToolUseID: "x",

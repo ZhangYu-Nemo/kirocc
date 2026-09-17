@@ -7,7 +7,7 @@ import (
 	"github.com/d-kuro/kirocc/internal/kiroproto"
 )
 
-func TestExtractToolResults(t *testing.T) {
+func TestScanMessageContentToolResults(t *testing.T) {
 	tests := []struct {
 		name           string
 		content        anthropic.MessageContent
@@ -60,7 +60,7 @@ func TestExtractToolResults(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := ExtractToolResults(tt.content)
+			got, _ := scanMessageContent(tt.content)
 			if len(got) != tt.wantLen {
 				t.Fatalf("got %d, want %d", len(got), tt.wantLen)
 			}
@@ -242,7 +242,7 @@ func TestReorderToolResults(t *testing.T) {
 	}
 }
 
-func TestExtractImages(t *testing.T) {
+func TestScanMessageContentImages(t *testing.T) {
 	tests := []struct {
 		name       string
 		content    anthropic.MessageContent
@@ -289,7 +289,7 @@ func TestExtractImages(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := ExtractImages(tt.content)
+			_, got := scanMessageContent(tt.content)
 			if len(got) != tt.wantLen {
 				t.Fatalf("got %d, want %d", len(got), tt.wantLen)
 			}
