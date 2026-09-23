@@ -108,7 +108,7 @@ API keys are available for Kiro Pro, Pro+, Pro Max, and Power subscribers. On gr
 | `-db`                 | (OS-dependent, see below) | Kiro CLI SQLite DB path                                             |
 | `-api-key`            | (none)                    | API key required to access the proxy                                |
 | `-kiro-api-key`       | (none)                    | Kiro API key (`ksk_…`) to use instead of the Kiro CLI DB credential |
-| `-kiro-api-region`    | (credential's region)     | Region for Kiro API endpoints (`runtime.<region>.kiro.dev`)         |
+| `-kiro-api-region`    | `us-east-1`               | Region for Kiro API endpoints (`runtime.<region>.kiro.dev`)         |
 | `-model-discovery`    | `true`                    | Fetch Kiro's model catalog at startup                               |
 | `-keepalive-interval` | `15s`                     | SSE idle keep-alive interval (0 = disabled)                         |
 | `-debug`              | `false`                   | Enable debug logging                                                |
@@ -157,7 +157,7 @@ Command-line options can be overridden with environment variables.
 
 ### Custom API region
 
-Kiro API endpoints are region-scoped: completions go to `runtime.<region>.kiro.dev` and the model catalog to `management.<region>.kiro.dev`. By default the region comes from the Kiro CLI credential (the profile ARN, or the region stored by kiro-cli).
+Kiro API endpoints are region-scoped: completions go to `runtime.<region>.kiro.dev` and the model catalog to `management.<region>.kiro.dev`. By default kirocc uses `us-east-1`; `-kiro-api-region` or `KIRO_API_REGION` can override it.
 
 That default is not always a region Kiro serves. kiro-cli records the region you signed in from, and only a few regions have Kiro hosts — `us-east-1`, `eu-central-1`, `us-gov-east-1`, `us-gov-west-1` at the time of writing. If your credential resolves to anything else, the hostname does not exist and every request fails with an upstream error. `-kiro-api-region` pins the region instead:
 

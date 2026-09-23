@@ -245,6 +245,168 @@ func TestSanitizeJSONSchema_AnyOfNonEnum_LogsWarning(t *testing.T) {
 	}
 }
 
+func TestSanitizeJSONSchema_AnyOfNonEnum_DebugsValidationDiffPaths(t *testing.T) {
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	old := slog.Default()
+	slog.SetDefault(logger)
+	defer slog.SetDefault(old)
+
+	schema := map[string]any{
+		"anyOf": []any{
+			map[string]any{"type": "string"},
+			map[string]any{"type": "number"},
+		},
+	}
+	SanitizeJSONSchema(schema)
+
+	if !strings.Contains(buf.String(), "validation_diff_paths") {
+		t.Fatalf("expected debug validation diff paths, got: %q", buf.String())
+	}
+	if strings.Contains(buf.String(), "validation_shapes") {
+		t.Fatalf("full validation shapes should not be logged, got: %q", buf.String())
+	}
+}
+
+func TestConvertTools_SchemaWarningIncludesToolName(t *testing.T) {
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	old := slog.Default()
+	slog.SetDefault(logger)
+	defer slog.SetDefault(old)
+
+	ConvertTools([]anthropic.Tool{{
+		Name: "array_or_object",
+		InputSchema: map[string]any{
+			"anyOf": []any{
+				map[string]any{"type": "array", "items": map[string]any{}},
+				map[string]any{"type": "object"},
+			},
+		},
+	}}, nil)
+
+	if !strings.Contains(buf.String(), "tool_name=array_or_object") {
+		t.Fatalf("expected tool name in schema warning, got: %q", buf.String())
+	}
+}
+
+func TestSanitizeJSONSchema_AnyOfEquivalentBranches_NoWarning(t *testing.T) {
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	old := slog.Default()
+	slog.SetDefault(logger)
+	defer slog.SetDefault(old)
+
+	schema := map[string]any{
+		"anyOf": []any{
+			map[string]any{"type": "string", "description": "first description"},
+			map[string]any{"type": "string", "description": "second description", "format": "uri"},
+		},
+	}
+	got := SanitizeJSONSchema(schema)
+
+	if got["type"] != "string" {
+		t.Fatalf("expected string type, got %v", got["type"])
+	}
+	if got["description"] != "first description" {
+		t.Fatalf("expected first description to be preserved, got %v", got["description"])
+	}
+	if _, ok := got["anyOf"]; ok {
+		t.Fatal("anyOf should be removed")
+	}
+	if buf.Len() > 0 {
+		t.Fatalf("expected no warning for equivalent anyOf branches, got: %q", buf.String())
+	}
+}
+
+func TestSanitizeJSONSchema_ArtifactContractKeepsStringType(t *testing.T) {
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	old := slog.Default()
+	slog.SetDefault(logger)
+	defer slog.SetDefault(old)
+
+	schema := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"contract": map[string]any{
+				"anyOf": []any{
+					map[string]any{"type": "string", "const": "latest"},
+					map[string]any{"type": "string", "pattern": `^(0|[1-9]\d{0,3})\.(0|[1-9]\d{0,4})\.(0|[1-9]\d{0,5})$`},
+				},
+			},
+		},
+	}
+
+	got := sanitizeJSONSchema(schema, "Artifact")
+	properties := got["properties"].(map[string]any)
+	contract := properties["contract"].(map[string]any)
+
+	if contract["type"] != "string" {
+		t.Fatalf("expected contract type string, got %v", contract["type"])
+	}
+	if _, ok := contract["enum"]; ok {
+		t.Fatal("contract should not be limited to the latest enum value")
+	}
+	if buf.Len() > 0 {
+		t.Fatalf("expected no warning for the reduced contract schema, got: %q", buf.String())
+	}
+}
+
+func TestSanitizeJSONSchema_ArtifactFilesUsesObjectBranch(t *testing.T) {
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	old := slog.Default()
+	slog.SetDefault(logger)
+	defer slog.SetDefault(old)
+
+	schema := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"files": map[string]any{
+				"anyOf": []any{
+					map[string]any{
+						"type":  "array",
+						"items": map[string]any{"type": "object"},
+					},
+					map[string]any{
+						"type":          "object",
+						"propertyNames": map[string]any{"type": "string"},
+						"additionalProperties": map[string]any{
+							"anyOf": []any{
+								map[string]any{"type": "string"},
+								map[string]any{
+									"type":       "object",
+									"properties": map[string]any{"from": map[string]any{"type": "string"}},
+									"required":   []any{"from"},
+								},
+								map[string]any{"type": "null"},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	got := sanitizeJSONSchema(schema, "Artifact")
+	properties := got["properties"].(map[string]any)
+	files := properties["files"].(map[string]any)
+
+	if files["type"] != "object" {
+		t.Fatalf("expected Artifact files to use object branch, got %v", files["type"])
+	}
+	if _, ok := files["items"]; ok {
+		t.Fatal("Artifact files should not use the array branch")
+	}
+	if _, ok := files["anyOf"]; ok {
+		t.Fatal("files anyOf should be removed")
+	}
+	if buf.Len() > 0 {
+		t.Fatalf("expected no warning for the known Artifact files union, got: %q", buf.String())
+	}
+}
+
 func TestSanitizeJSONSchema_OneOfNonEnum_LogsWarning(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))

@@ -146,7 +146,8 @@ func NewHTTPClient(opts ...HTTPClientOption) *HTTPClient {
 	transport.MaxIdleConns = 100
 	transport.MaxIdleConnsPerHost = 10
 	transport.IdleConnTimeout = 90 * time.Second
-	transport.ResponseHeaderTimeout = 30 * time.Second
+	transport.ResponseHeaderTimeout = 60 * time.Second
+	configureKiroTLSTransport(transport)
 
 	c := &HTTPClient{}
 	for _, opt := range opts {

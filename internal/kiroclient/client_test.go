@@ -22,6 +22,17 @@ func newTCP4TestServer(t *testing.T, handler http.Handler) *httptest.Server {
 	return tu.NewTCP4TestServer(t, handler)
 }
 
+func TestNewHTTPClient_ResponseHeaderTimeout(t *testing.T) {
+	c := NewHTTPClient()
+	transport, ok := c.httpClient.Transport.(*http.Transport)
+	if !ok {
+		t.Fatalf("expected *http.Transport, got %T", c.httpClient.Transport)
+	}
+	if got, want := transport.ResponseHeaderTimeout, 60*time.Second; got != want {
+		t.Fatalf("ResponseHeaderTimeout = %s, want %s", got, want)
+	}
+}
+
 func TestHTTPClient_Success(t *testing.T) {
 	srv := newTCP4TestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("X-Amz-Target") != amzTarget {

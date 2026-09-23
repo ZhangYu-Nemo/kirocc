@@ -15,13 +15,13 @@ func TestRun_HelpFlagReturnsNoError(t *testing.T) {
 }
 
 func TestParseFlags_KiroAPIRegion(t *testing.T) {
-	t.Run("default is empty so the credential region is used", func(t *testing.T) {
+	t.Run("default is us-east-1", func(t *testing.T) {
 		cfg, err := parseFlags(nil)
 		if err != nil {
 			t.Fatalf("parseFlags: %v", err)
 		}
-		if cfg.KiroAPIRegion != "" {
-			t.Fatalf("KiroAPIRegion = %q, want empty", cfg.KiroAPIRegion)
+		if cfg.KiroAPIRegion != "us-east-1" {
+			t.Fatalf("KiroAPIRegion = %q, want us-east-1", cfg.KiroAPIRegion)
 		}
 	})
 

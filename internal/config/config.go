@@ -21,6 +21,8 @@ const (
 	DefaultMaxRequestBody = 32 << 20
 	// DefaultKeepAliveInterval is the default idle time between SSE keep-alive comments.
 	DefaultKeepAliveInterval = 15 * time.Second
+	// DefaultKiroAPIRegion is the default region used for Kiro API endpoints.
+	DefaultKiroAPIRegion = "us-east-1"
 )
 
 // Config is the runtime configuration for kirocc.

@@ -1,8 +1,12 @@
 package reqconv
 
 import (
+	"fmt"
 	"log/slog"
 	"maps"
+	"reflect"
+	"sort"
+	"strconv"
 )
 
 // unsupportedKeywords lists JSON Schema keywords that Kiro API rejects.
@@ -41,6 +45,14 @@ var unsupportedKeywords = map[string]struct{}{
 
 // SanitizeJSONSchema recursively removes fields that Kiro API rejects.
 func SanitizeJSONSchema(schema map[string]any) map[string]any {
+	return sanitizeJSONSchema(schema, "")
+}
+
+func sanitizeJSONSchema(schema map[string]any, toolName string) map[string]any {
+	return sanitizeJSONSchemaAtPath(schema, toolName, "")
+}
+
+func sanitizeJSONSchemaAtPath(schema map[string]any, toolName, schemaPath string) map[string]any {
 	if schema == nil {
 		return map[string]any{}
 	}
@@ -65,12 +77,12 @@ func SanitizeJSONSchema(schema map[string]any) map[string]any {
 		default:
 			switch v := value.(type) {
 			case map[string]any:
-				result[key] = SanitizeJSONSchema(v)
+				result[key] = sanitizeJSONSchemaAtPath(v, toolName, appendSchemaPath(schemaPath, key))
 			case []any:
 				sanitized := make([]any, len(v))
 				for i, item := range v {
 					if m, ok := item.(map[string]any); ok {
-						sanitized[i] = SanitizeJSONSchema(m)
+						sanitized[i] = sanitizeJSONSchemaAtPath(m, toolName, appendSchemaPath(schemaPath, key))
 					} else {
 						sanitized[i] = item
 					}
@@ -87,23 +99,47 @@ func SanitizeJSONSchema(schema map[string]any) map[string]any {
 		switch key {
 		case "anyOf", "oneOf":
 			if arr, ok := value.([]any); ok && len(arr) > 0 {
-				if merged := flattenEnumBranches(arr); merged != nil {
+				branches := sanitizeCombinatorBranches(arr, toolName, schemaPath)
+				if selected, ok := selectArtifactBranch(toolName, schemaPath, branches); ok {
+					maps.Copy(result, selected)
+					continue
+				}
+				if merged := flattenEnumBranches(branches); merged != nil {
 					maps.Copy(result, merged)
-				} else if nonNull := dropNullBranches(arr); len(nonNull) == 1 {
-					if m, ok := nonNull[0].(map[string]any); ok {
-						maps.Copy(result, SanitizeJSONSchema(m))
+					continue
+				}
+
+				nonNull := dropNullBranches(branches)
+				if len(nonNull) == 1 {
+					maps.Copy(result, nonNull[0])
+					continue
+				}
+				if len(nonNull) > 0 {
+					collapsed := collapseEquivalentBranches(nonNull)
+					if len(collapsed) == 1 {
+						maps.Copy(result, collapsed[0])
+						continue
 					}
-				} else if first, ok := arr[0].(map[string]any); ok {
+					slog.Debug("lossy schema conversion details",
+						"combinator", key,
+						"tool_name", toolName,
+						"validation_diff_paths", validationDiffPaths(nonNull))
 					slog.Warn("lossy schema conversion: using first branch only",
-						"combinator", key, "branches", len(arr))
-					maps.Copy(result, SanitizeJSONSchema(first))
+						"combinator", key, "branches", len(arr), "tool_name", toolName)
+					maps.Copy(result, nonNull[0])
+					continue
+				}
+				if len(branches) > 0 {
+					slog.Warn("lossy schema conversion: using first branch only",
+						"combinator", key, "branches", len(arr), "tool_name", toolName)
+					maps.Copy(result, branches[0])
 				}
 			}
 		case "allOf":
 			if arr, ok := value.([]any); ok {
 				for _, item := range arr {
 					if m, ok := item.(map[string]any); ok {
-						maps.Copy(result, SanitizeJSONSchema(m))
+						maps.Copy(result, sanitizeJSONSchemaAtPath(m, toolName, schemaPath))
 					}
 				}
 			}
@@ -148,24 +184,72 @@ func EnsureObjectRoot(schema map[string]any) map[string]any {
 	}
 }
 
+func sanitizeCombinatorBranches(branches []any, toolName, schemaPath string) []map[string]any {
+	result := make([]map[string]any, 0, len(branches))
+	for _, branch := range branches {
+		m, ok := branch.(map[string]any)
+		if ok {
+			result = append(result, sanitizeJSONSchemaAtPath(m, toolName, schemaPath))
+		}
+	}
+	return result
+}
+
+func appendSchemaPath(path, key string) string {
+	if path == "" {
+		return key
+	}
+	return path + "." + key
+}
+
+func selectArtifactBranch(toolName, schemaPath string, branches []map[string]any) (map[string]any, bool) {
+	if toolName != "Artifact" || len(branches) != 2 {
+		return nil, false
+	}
+
+	switch schemaPath {
+	case "properties.contract":
+		var broadString map[string]any
+		for _, branch := range branches {
+			if branch["type"] != "string" {
+				return nil, false
+			}
+			if _, hasEnum := branch["enum"]; hasEnum {
+				continue
+			}
+			if broadString != nil {
+				return nil, false
+			}
+			broadString = branch
+		}
+		if broadString != nil {
+			return broadString, true
+		}
+	case "properties.files":
+		for _, branch := range branches {
+			if branch["type"] == "object" {
+				return branch, true
+			}
+		}
+	}
+
+	return nil, false
+}
+
 // dropNullBranches returns branches that are not {type: "null"}.
-func dropNullBranches(branches []any) []any {
-	var result []any
-	for _, b := range branches {
-		m, ok := b.(map[string]any)
-		if !ok || m["type"] != "null" {
-			result = append(result, b)
+func dropNullBranches(branches []map[string]any) []map[string]any {
+	result := make([]map[string]any, 0, len(branches))
+	for _, branch := range branches {
+		if branch["type"] != "null" {
+			result = append(result, branch)
 		}
 	}
 	return result
 }
 
 // flattenEnumBranches merges anyOf/oneOf branches when all branches have enum values.
-// Each branch is sanitized exactly once and the sanitized result is reused for
-// enum/type extraction, avoiding the double SanitizeJSONSchema call that the
-// previous combinator pass performed per branch.
 // Returns a merged schema with combined enum, or nil if not all branches are enum-based.
-func flattenEnumBranches(branches []any) map[string]any {
+func flattenEnumBranches(branches []map[string]any) map[string]any {
 	if len(branches) == 0 {
 		return nil
 	}
@@ -173,12 +257,7 @@ func flattenEnumBranches(branches []any) map[string]any {
 	var typ string
 	typConsistent := true
 	for _, branch := range branches {
-		m, ok := branch.(map[string]any)
-		if !ok {
-			return nil
-		}
-		sanitized := SanitizeJSONSchema(m)
-		enumVal, hasEnum := sanitized["enum"]
+		enumVal, hasEnum := branch["enum"]
 		if !hasEnum {
 			return nil
 		}
@@ -187,7 +266,7 @@ func flattenEnumBranches(branches []any) map[string]any {
 			return nil
 		}
 		allEnums = append(allEnums, arr...)
-		if t, ok := sanitized["type"].(string); ok {
+		if t, ok := branch["type"].(string); ok {
 			if typ == "" {
 				typ = t
 			} else if typ != t {
@@ -202,4 +281,168 @@ func flattenEnumBranches(branches []any) map[string]any {
 		merged["type"] = typ
 	}
 	return merged
+}
+
+var ignoredValidationKeywords = map[string]struct{}{
+	"$comment":    {},
+	"deprecated":  {},
+	"description": {},
+	"examples":    {},
+	"readOnly":    {},
+	"title":       {},
+	"writeOnly":   {},
+}
+
+func collapseEquivalentBranches(branches []map[string]any) []map[string]any {
+	result := make([]map[string]any, 0, len(branches))
+	shapes := make([]any, 0, len(branches))
+	for _, branch := range branches {
+		shape := validationShape(branch)
+		duplicate := false
+		for _, existing := range shapes {
+			if reflect.DeepEqual(shape, existing) {
+				duplicate = true
+				break
+			}
+		}
+		if !duplicate {
+			result = append(result, branch)
+			shapes = append(shapes, shape)
+		}
+	}
+	return result
+}
+
+const maxValidationDiffPaths = 8
+
+func validationDiffPaths(branches []map[string]any) []string {
+	if len(branches) < 2 {
+		return nil
+	}
+
+	paths := make([]string, 0, maxValidationDiffPaths)
+	seen := make(map[string]struct{}, maxValidationDiffPaths)
+	left := validationShape(branches[0])
+	for index := 1; index < len(branches) && len(paths) < maxValidationDiffPaths; index++ {
+		collectValidationDiffPaths("", left, validationShape(branches[index]), &paths, seen)
+	}
+	return paths
+}
+
+func collectValidationDiffPaths(path string, left, right any, paths *[]string, seen map[string]struct{}) {
+	if len(*paths) >= maxValidationDiffPaths {
+		return
+	}
+
+	leftMap, leftIsMap := left.(map[string]any)
+	rightMap, rightIsMap := right.(map[string]any)
+	if leftIsMap || rightIsMap {
+		if !leftIsMap || !rightIsMap {
+			addValidationDiffPath(paths, seen, validationDiff(path, left, right))
+			return
+		}
+
+		keys := make([]string, 0, len(leftMap)+len(rightMap))
+		keySet := make(map[string]struct{}, len(leftMap)+len(rightMap))
+		for key := range leftMap {
+			keySet[key] = struct{}{}
+			keys = append(keys, key)
+		}
+		for key := range rightMap {
+			if _, ok := keySet[key]; !ok {
+				keys = append(keys, key)
+			}
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
+			childPath := key
+			if path != "" {
+				childPath = path + "." + key
+			}
+			leftValue, leftOK := leftMap[key]
+			rightValue, rightOK := rightMap[key]
+			if !leftOK || !rightOK {
+				addValidationDiffPath(paths, seen, childPath+" (branch key missing)")
+				continue
+			}
+			collectValidationDiffPaths(childPath, leftValue, rightValue, paths, seen)
+			if len(*paths) >= maxValidationDiffPaths {
+				return
+			}
+		}
+		return
+	}
+
+	leftSlice, leftIsSlice := left.([]any)
+	rightSlice, rightIsSlice := right.([]any)
+	if leftIsSlice || rightIsSlice {
+		if !leftIsSlice || !rightIsSlice {
+			addValidationDiffPath(paths, seen, validationDiff(path, left, right))
+			return
+		}
+		if len(leftSlice) != len(rightSlice) {
+			addValidationDiffPath(paths, seen, fmt.Sprintf("%s.length=%d != %d", path, len(leftSlice), len(rightSlice)))
+		}
+		for index := 0; index < len(leftSlice) && index < len(rightSlice); index++ {
+			collectValidationDiffPaths(path+"["+strconv.Itoa(index)+"]", leftSlice[index], rightSlice[index], paths, seen)
+			if len(*paths) >= maxValidationDiffPaths {
+				return
+			}
+		}
+		return
+	}
+
+	if !reflect.DeepEqual(left, right) {
+		addValidationDiffPath(paths, seen, validationDiff(path, left, right))
+	}
+}
+
+func addValidationDiffPath(paths *[]string, seen map[string]struct{}, path string) {
+	if _, ok := seen[path]; ok {
+		return
+	}
+	seen[path] = struct{}{}
+	if len(*paths) < maxValidationDiffPaths {
+		*paths = append(*paths, path)
+	}
+}
+
+func validationDiff(path string, left, right any) string {
+	return path + "=" + compactValidationValue(left) + " != " + compactValidationValue(right)
+}
+
+func compactValidationValue(value any) string {
+	if value == nil {
+		return "null"
+	}
+	if text, ok := value.(string); ok {
+		return strconv.Quote(text)
+	}
+	text := fmt.Sprintf("%v", value)
+	if len(text) > 48 {
+		return text[:45] + "..."
+	}
+	return text
+}
+
+func validationShape(value any) any {
+	switch v := value.(type) {
+	case map[string]any:
+		shape := make(map[string]any, len(v))
+		for key, nested := range v {
+			if _, ignored := ignoredValidationKeywords[key]; ignored {
+				continue
+			}
+			shape[key] = validationShape(nested)
+		}
+		return shape
+	case []any:
+		shape := make([]any, len(v))
+		for i, nested := range v {
+			shape[i] = validationShape(nested)
+		}
+		return shape
+	default:
+		return value
+	}
 }
